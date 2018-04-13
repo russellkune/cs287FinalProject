@@ -1,0 +1,45 @@
+Sentence generations:
+
+The women are cheerleading in the outdoor competition .
+A woman <oov> is putting a young boy to put in the rain .
+A group of men stand in a doorway near a woman and bunch of clothes in an old bakery desk .
+There is a <oov> musician , one after three students 's hair .
+A woman photographer wearing a gray hat looks through the microphone .
+A young male makes his guitar after <oov> right , and sing in his uniforms .
+A man speaks a newspaper to build an oven .
+The child walks through the leaves .
+A woman wearing a black scarf reading while sitting .
+The firefighters walk up to shore .
+
+Sentence interpolations:
+
+man in a long is standing .
+A man in black robes is on their honeymoon .
+A man dressed in blue is outdoors .
+A young man dressed in blue has running .
+A black haired woman jumps in water is not .
+
+A older boy with a black t-shirt in front of a tall building holding a banner
+A older teenager dressed in a black shirt having a conversation with a camera
+A blond boy with another child posing a brown jacket
+A baby smiles as another child a smiling dog
+An child has no arms as the girl
+
+A man driving through a the middle .
+man riding a motorbike .
+People are workers with a motorcycle .
+there group of men are outside
+there are men singing for work
+
+The <oov> sits by a their parent at the circus .
+The dog cooks at a blue work .
+A dog watches a <oov> at the rope .
+A man dog watches a <oov> at .
+A man watches a <oov> after
+
+The couple are playing soccer to their game .
+The white cat is yelling at <oov> .
+The tan dog is being <oov> at a funny .
+<oov> male going to sell outside .
+<oov> bicycles down two money .
+
