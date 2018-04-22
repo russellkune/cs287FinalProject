@@ -18,7 +18,8 @@ sys.path.insert(0,parentdir)
 
 from models import load_models, generate
 from utils import to_gpu, Corpus, batchify
-parser = argparse.ArgumentParser(description='PyTorch ARAE for Text Eval')
+
+parser = argparse.ArgumentParser(description='Inverter Training function')
 parser.add_argument('--load_path', type=str, required=True,
                         help='directory to load models from')
 parser.add_argument('--data_path',type = str,required =True, help = 'directiory to load data from')
@@ -114,7 +115,9 @@ class JSDistance(nn.Module):
             return (d1+d2)/2
 
 ###################################################################################
-# Inverter class 
+# Inverter class
+# Inverter: Standard MLP
+# Inverter: Autoencoder style MLP 
 ###################################################################################
 
 class Inverter(nn.Module):
@@ -160,6 +163,72 @@ class Inverter(nn.Module):
             except:
                 pass
 
+
+
+
+class Inverter_AE(nn.Module):
+    # separate Inverter to map continuous code back to z (mean & std)
+    def __init__(self, ninput, noutput, layers,
+                 activation=nn.ReLU(), gpu=False):
+        super(Inverter_AE, self).__init__()
+        self.ninput = ninput
+        self.noutput = noutput
+        self.gpu = gpu
+        noutput_mu = noutput
+        noutput_var = noutput
+        
+        layer_sizes = [ninput] + [int(x) for x in layers.split('-')]
+        self.layers = []
+
+        for i in range(len(layer_sizes) - 1):
+            layer = nn.Linear(layer_sizes[i], layer_sizes[i + 1])
+            self.layers.append(layer)
+            self.add_module("layer" + str(i + 1), layer)
+
+            bn = nn.BatchNorm1d(layer_sizes[i + 1], eps=1e-05, momentum=0.1)
+            self.layers.append(bn)
+            self.add_module("bn" + str(i + 1), bn)
+
+            self.layers.append(activation)
+            self.add_module("activation" + str(i + 1), activation)
+
+        layer = nn.Linear(layer_sizes[-1], noutput)
+        self.layers.append(layer)
+        self.add_module("layer" + str(len(self.layers)), layer)
+
+        self.linear_mu = nn.Linear(noutput, noutput_mu)
+        self.linear_var = nn.Linear(noutput, noutput_var)
+        
+        self.init_weights()
+
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+        mu = self.linear_mu(x)
+        logvar = self.linear_var(x)    
+        std = 0.5*logvar
+        std = std.exp_()                                        # std
+        epsilon = Variable(std.data.new(std.size()).normal_())  # normal noise with the same type and size as std.data
+        if self.gpu:
+            epsilon = epsilon.cuda()
+        
+        sample = mu + (epsilon * std)
+        
+        return sample
+
+    def init_weights(self):
+        init_std = 0.02
+        for layer in self.layers:
+            try:
+                layer.weight.data.normal_(0, init_std)
+                layer.bias.data.fill_(0)
+            except:
+                pass
+            
+        self.linear_mu.weight.data.normal_(0, init_std)
+        self.linear_mu.bias.data.fill_(0)
+        self.linear_var.weight.data.normal_(0, init_std)
+        self.linear_var.bias.data.fill_(0)
 ############################################################################################
 # Save Model
 ############################################################################################
@@ -191,7 +260,7 @@ def evaluate_inverter(data_source, epoch):
         inv_hidden = gan_gen(inv_z)
         eigd_indices = autoencoder.generate(inv_hidden, args.maxlen, args.sample)
 
-        with open("/arae/new_output/%s_inverter.txt" % (epoch), "a") as f:
+        with open("new_output/%s_inverter.txt" % (epoch), "a") as f:
             target = target.view(ae_indices.size(0), -1).data.cpu().numpy()
             ae_indices = ae_indices.data.cpu().numpy()
             eigd_indices = eigd_indices.data.cpu().numpy()
@@ -262,6 +331,24 @@ def train_inv(batch,i,epoch,total_err):
     
     return err
 
+
+def train_inv_ae(batch,i,epoch,total_err):
+    autoencoder.train()
+    autoencoder.zero_grad()
+    source, target, lengths = data_batch
+    source = to_gpu(args.cuda, Variable(source))
+    target = to_gpu(args.cuda, Variable(target))
+    # Create sentence length mask over padding
+    mask = target.gt(0)
+    masked_target = target.masked_select(mask)
+    # examples x ntokens
+    output_mask = mask.unsqueeze(1).expand(mask.size(0), ntokens)
+    output = autoencoder(source, lengths, noise=True, generator=gan_gen, inverter=inverter)
+    # output_size: batch_size, maxlen, self.ntokens
+    flattened_output = output.view(-1, ntokens)
+    masked_output = flattened_output.masked_select(output_mask).view(-1, ntokens)
+    errI = criterion_ce(masked_output/args.temp, masked_target)
+    
 ############################################################################################
 # Main method
 ############################################################################################
@@ -307,6 +394,9 @@ print("Loaded data!")
 # Training Code
 ###########################################################################
 print('Training...')
+fixed_noise = to_gpu(args.cuda, Variable(torch.ones(args.batch_size, 100)))
+fixed_noise.data.normal_(0, 1)
+
 for epoch in range(1,1+args.epochs):
     total_loss = Variable(torch.FloatTensor([0.0])).cuda()
     niter = 0
@@ -319,7 +409,8 @@ for epoch in range(1,1+args.epochs):
         total_loss += loss 
         if niter > 1000:
             total_loss = Variable(torch.FloatTensor([0.0])).cuda()
-    
+
+    evaluate_inverter(fixed_noise, "end_of_epoch_{}".format(epoch))    
     #shuffle training data between epochs  
     train_data = batchify(corpus.train, args.batch_size, shuffle=True)
     
